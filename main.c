@@ -22,7 +22,6 @@ int main () {
     // Turn on step by step instructions
     int performance = 0;
     int debug = 0;
-
     uint32_t* registers = (uint32_t*) malloc(17*sizeof(uint32_t));       
     uint32_t* memory = (uint32_t*) malloc(1024*sizeof(uint32_t));
     // memory addresses 0x
@@ -33,7 +32,7 @@ int main () {
 
 
     FILE *fptr;
-    fptr = fopen("../Neurotic/test/fib.asm.bin", "r");
+    fptr = fopen("../Neurotic/test/hello_world.asm.bin", "r");
     if (fptr == NULL) {
         printf("File not found");
         return 1;
@@ -108,7 +107,7 @@ int main () {
             uint8_t destination = byteIsolate(nextInstruction, 3, 4, 0);
             if (loadBit) {
                 if (immBit) {
-                    offset = registers[offset];
+                    offset = memory[registers[offset]];
                 } else {
                     offset = memory[registers[15] + offset];
                 }
@@ -120,15 +119,46 @@ int main () {
 
 
             if (debug) {printf("Save/Load: %X, Immediate: %X, into register %d with Value %X \n", loadBit, immBit, destination, offset);}
-                if (loadBit) {
-                    // Load
-                    registers[destination] = offset;
+
+            if (loadBit) {
+                // Load
+                registers[destination] = offset;
+            } else {
+                if (registers[offset] > 0xEFFFFFFF) {
+                    // UART
+                    if (registers[offset] == 0xF0000000) {
+                        // TX FIFO
+                        TX_FIFO = registers[destination];
+
+                        if (debug) {
+                            printf("UART Transmitting: %c - %X\n", (char) TX_FIFO, TX_FIFO);
+
+                        } else {
+                            printf("%c", (char) TX_FIFO);
+
+                        }
+                    } else if (registers[offset] + registers[15] == 0xF0000004) {
+                        // RX FIFO
+                        RX_FIFO = registers[destination];;
+                        printf("UART Receiving: %c\n", (char) RX_FIFO);
+
+                    } else if (registers[offset] == 0xF0000008) {
+                        // CTS
+                        UART_CTS = registers[destination];;
+
+                    } else if (registers[offset] == 0xF000000C) {
+                        // RTS
+                        UART_RTS = registers[destination];
+
+                    }
                 } else {
                     // Store
                     memory[registers[offset] + registers[15]] = registers[destination];
 
                     printf("Storing %X into memory address %X\n", registers[destination], registers[offset] + registers[15]);
                 }
+            }
+        
         } else if (nextInstruction == (nextInstruction & 0xFAFFFFFF)) {
             //printf("Branch Instruction");
             
