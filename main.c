@@ -20,17 +20,20 @@ uint32_t byteIsolate(uint32_t opcode, uint8_t position, uint8_t size, uint8_t of
 // Register 12 is print
 int main () {
     // Turn on step by step instructions
-    int performance = 1;
+    int performance = 0;
     int debug = 0;
 
     uint32_t* registers = (uint32_t*) malloc(17*sizeof(uint32_t));       
     uint32_t* memory = (uint32_t*) malloc(1024*sizeof(uint32_t));
-
+    // memory addresses 0x
+    uint32_t UART_TX, UART_RX, UART_CTS, UART_RTS;
+    uint32_t TX_FIFO, RX_FIFO;
+    
     registers[15] = 0; // PC
 
 
     FILE *fptr;
-    fptr = fopen("fib.bin", "r");
+    fptr = fopen("test.asm.bin", "r");
     if (fptr == NULL) {
         printf("File not found");
         return 1;
@@ -41,6 +44,7 @@ int main () {
     while (fread(nextLine, 4, 1, fptr)) {
         memory[fileReadIndex] = nextLine[0];
         fileReadIndex ++;
+        if (debug) {printf("Read %X to memory address %d\n", nextLine[0], fileReadIndex-1);}
     }
     uint32_t nextInstruction = memory[registers[15]];
     
@@ -96,21 +100,33 @@ int main () {
                     break;
             }
 
-        } else if (nextInstruction == (nextInstruction & 0xF7DFFFFF)) {
+        } else if (nextInstruction == (nextInstruction & 0xF7FFFFFF)) {
             //printf("^ Single Data Transfer \n");
             char loadBit = byteIsolate(nextInstruction, 0, 1, 20);
             uint8_t immBit = byteIsolate(nextInstruction, 25, 1, 0);
-            int32_t offset = byteIsolate(nextInstruction, 0, 12, 0);
+            uint32_t offset = byteIsolate(nextInstruction, 0, 12, 0);
             uint8_t destination = byteIsolate(nextInstruction, 3, 4, 0);
-
-            if (immBit) {
-                offset = registers[offset];
+            if (loadBit) {
+                if (immBit) {
+                    offset = registers[offset];
+                } else {
+                    offset = memory[offset];
+                }
+            } else {
+                // if (immBit) {
+                //     offset = registers[destination];
+                // }
             }
 
-            if (debug) {printf("Save/Load: %X, Immediate: %X, into register %X with Value %X \n", loadBit, immBit, destination, offset);}
 
-            registers[destination] = offset;
-
+            if (debug) {printf("Save/Load: %X, Immediate: %X, into register %d with Value %X \n", loadBit, immBit, destination, offset);}
+                if (loadBit) {
+                    // Load
+                    registers[destination] = offset;
+                } else {
+                    // Store
+                    memory[registers[offset]] = registers[destination];
+                }
         } else if (nextInstruction == (nextInstruction & 0xFAFFFFFF)) {
             //printf("Branch Instruction");
             
@@ -138,13 +154,14 @@ int main () {
 
         }
 
-        if (debug) {printf("Register Output: R0 = %X, R1 = %X, R2 = %X, R3 = %X, PSX = %X\n", registers[0], registers[1], registers[2], registers[3], registers[16]);}
+        if (debug) {printf("Register Output: R0 = %X, R1 = %X, R2 = %X, R3 = %X, R12 = %X, PSX = %X\n", registers[0], registers[1], registers[2], registers[3], registers[12], registers[16]);}
         registers[15] ++; // Increment PC
         nextInstruction = memory[registers[15]]; // Get Next Instruction
         instructionsElapsed++; // For Stats
         if (!performance && printToggle != registers[12]) {
             printf("Print Register Updated: \"0x%X\" \"#%d\"\n", registers[12], registers[12]);
         }
+        printf("Memory Address 0x10 contains: %X\n", memory[16]);
     }
     
     gettimeofday(&end, NULL);
