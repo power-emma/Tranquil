@@ -33,7 +33,7 @@ int main () {
 
 
     FILE *fptr;
-    fptr = fopen("test.asm.bin", "r");
+    fptr = fopen("../Neurotic/test/fib.asm.bin", "r");
     if (fptr == NULL) {
         printf("File not found");
         return 1;
@@ -110,7 +110,7 @@ int main () {
                 if (immBit) {
                     offset = registers[offset];
                 } else {
-                    offset = memory[offset];
+                    offset = memory[registers[15] + offset];
                 }
             } else {
                 // if (immBit) {
@@ -125,7 +125,9 @@ int main () {
                     registers[destination] = offset;
                 } else {
                     // Store
-                    memory[registers[offset]] = registers[destination];
+                    memory[registers[offset] + registers[15]] = registers[destination];
+
+                    printf("Storing %X into memory address %X\n", registers[destination], registers[offset] + registers[15]);
                 }
         } else if (nextInstruction == (nextInstruction & 0xFAFFFFFF)) {
             //printf("Branch Instruction");
@@ -154,14 +156,14 @@ int main () {
 
         }
 
-        if (debug) {printf("Register Output: R0 = %X, R1 = %X, R2 = %X, R3 = %X, R12 = %X, PSX = %X\n", registers[0], registers[1], registers[2], registers[3], registers[12], registers[16]);}
+        if (debug) {printf("Register Output: R0 = %X, R1 = %X, R2 = %X, R3 = %X, R12 = %X, PSX = %X, PC = %X\n", registers[0], registers[1], registers[2], registers[3], registers[12], registers[16], registers[15]);}
         registers[15] ++; // Increment PC
         nextInstruction = memory[registers[15]]; // Get Next Instruction
         instructionsElapsed++; // For Stats
         if (!performance && printToggle != registers[12]) {
             printf("Print Register Updated: \"0x%X\" \"#%d\"\n", registers[12], registers[12]);
         }
-        printf("Memory Address 0x10 contains: %X\n", memory[16]);
+        if (debug) {("Memory Address 0x10 contains: %X\n", memory[16]);}
     }
     
     gettimeofday(&end, NULL);
