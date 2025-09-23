@@ -3,8 +3,12 @@
 #include <stdlib.h>
 #include <string.h>
 #include <stdint.h>
+#include <unistd.h>
+#include <pthread.h>
 #include <sys/types.h>
 #include <sys/time.h>
+#include <sys/mman.h> /* mmap() is defined in this header */
+#include <fcntl.h> /* For O_CREAT and O_RDWR */
 
 // Arm Emulator
 // Emma Power - 2025
@@ -17,17 +21,62 @@ uint32_t byteIsolate(uint32_t opcode, uint8_t position, uint8_t size, uint8_t of
     return opcode & mask;
 }
 
+volatile int uart_running = 1;
+volatile uint32_t UART_TX, UART_RX, UART_CTS, UART_RTS;
+volatile uint32_t* UART_buffer;
+
+void* UART_thread() {
+    uint8_t readIndex = 0;
+    printf("Terminal Emulator Started\n");
+    // UART Thread
+    while (uart_running || UART_buffer[readIndex] != 0) {
+        if (UART_buffer[readIndex] != 0) {
+            printf("%c", (char) UART_buffer[readIndex]);
+            UART_buffer[readIndex] = 0;
+            readIndex++;
+        } else {
+            //usleep(1); // Sleep for 0.1ms to reduce CPU usage
+        }
+    }
+    printf("Terminal Emulator Exiting\n");
+    return NULL;
+}
+
 // Register 12 is print
 int main () {
+
     // Turn on step by step instructions
     int performance = 0;
     int debug = 0;
+
+    // char write_msg[BUFFER_SIZE];
+    // char read_msg[BUFFER_SIZE];
+
+    // Create POSIX shared memory object for UART_buffer
+    int shm_fd = shm_open("/uart_buffer", O_CREAT | O_RDWR, 0666);
+    if (shm_fd == -1) {
+        perror("shm_open failed");
+        exit(1);
+    }
+    if (ftruncate(shm_fd, 256 * sizeof(uint32_t)) == -1) {
+        perror("ftruncate failed");
+        exit(1);
+    }
+    UART_buffer = (uint32_t*) mmap(NULL, 256 * sizeof(uint32_t), PROT_READ | PROT_WRITE, MAP_SHARED, shm_fd, 0);
+    if (UART_buffer == MAP_FAILED) {
+        perror("mmap failed");
+        exit(1);
+    }
+    memset((void*)UART_buffer, 0, 256 * sizeof(uint32_t));
+
+    pthread_t uart_tid;
+    pthread_create(&uart_tid, NULL, (void*)UART_thread, NULL);
+  
     uint32_t* registers = (uint32_t*) malloc(17*sizeof(uint32_t));       
     uint32_t* memory = (uint32_t*) malloc(1024*sizeof(uint32_t));
     // memory addresses 0x
-    uint32_t UART_TX, UART_RX, UART_CTS, UART_RTS;
     uint32_t TX_FIFO, RX_FIFO;
-    
+    uint8_t UART_buffer_write = 0;
     registers[15] = 0; // PC
 
 
@@ -46,7 +95,7 @@ int main () {
         if (debug) {printf("Read %X to memory address %d\n", nextLine[0], fileReadIndex-1);}
     }
     uint32_t nextInstruction = memory[registers[15]];
-    
+        printf("-------CPU  START--------\n");
     // For runtime stats
     long instructionsElapsed = 0;
     struct timeval start, end;
@@ -129,12 +178,14 @@ int main () {
                     if (registers[offset] == 0xF0000000) {
                         // TX FIFO
                         TX_FIFO = registers[destination];
-
+                        UART_buffer[UART_buffer_write] = TX_FIFO;
+                        //printf("Wrote %c to UART buffer at index %d\n", (char) UART_buffer[UART_buffer_write], UART_buffer_write);
+                        UART_buffer_write++;
                         if (debug) {
                             printf("UART Transmitting: %c - %X\n", (char) TX_FIFO, TX_FIFO);
 
                         } else {
-                            printf("%c", (char) TX_FIFO);
+                            //printf("%c", (char) TX_FIFO);
 
                         }
                     } else if (registers[offset] + registers[15] == 0xF0000004) {
@@ -149,7 +200,6 @@ int main () {
                     } else if (registers[offset] == 0xF000000C) {
                         // RTS
                         UART_RTS = registers[destination];
-
                     }
                 } else {
                     // Store
@@ -187,13 +237,17 @@ int main () {
         }
 
         if (debug) {printf("Register Output: R0 = %X, R1 = %X, R2 = %X, R3 = %X, R12 = %X, PSX = %X, PC = %X\n", registers[0], registers[1], registers[2], registers[3], registers[12], registers[16], registers[15]);}
+        
         registers[15] ++; // Increment PC
         nextInstruction = memory[registers[15]]; // Get Next Instruction
         instructionsElapsed++; // For Stats
+        
         if (!performance && printToggle != registers[12]) {
             printf("Print Register Updated: \"0x%X\" \"#%d\"\n", registers[12], registers[12]);
         }
+
         if (debug) {("Memory Address 0x10 contains: %X\n", memory[16]);}
+
     }
     
     gettimeofday(&end, NULL);
@@ -211,9 +265,11 @@ int main () {
     mtime = (seconds * 1000000) + useconds; // Total elapsed time in microseconds
 
     float effectiveClock = (float) instructionsElapsed/(mtime);
-    
-    printf("Completed %d instructions in %d microseconds\n", instructionsElapsed, mtime);
-    printf("Clock Speed = %f MHz\n", effectiveClock);
-
+    printf("-------CPU HALTED--------\n");
+    printf("EMU STATS: Completed %d instructions in %d microseconds\n", instructionsElapsed, mtime);
+    printf("EMU STATS: Clock Speed = %f MHz\n", effectiveClock);
+    uart_running = 0; // Signal UART thread to exit
+    usleep(1000000); // Give UART thread time to print exit message
+    // Do not wait for UART thread, just exit
     return 0;
 }
