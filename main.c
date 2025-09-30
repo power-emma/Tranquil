@@ -7,8 +7,8 @@
 #include <pthread.h>
 #include <sys/types.h>
 #include <sys/time.h>
-#include <sys/mman.h> /* mmap() is defined in this header */
-#include <fcntl.h> /* For O_CREAT and O_RDWR */
+#include <sys/mman.h>
+#include <fcntl.h> 
 
 // Arm Emulator
 // Emma Power - 2025
@@ -74,6 +74,7 @@ int main () {
   
     uint32_t* registers = (uint32_t*) malloc(17*sizeof(uint32_t));       
     uint32_t* memory = (uint32_t*) malloc(1024*sizeof(uint32_t));
+
     // memory addresses 0x
     uint32_t TX_FIFO, RX_FIFO;
     uint8_t UART_buffer_write = 0;
@@ -119,6 +120,38 @@ int main () {
             uint8_t immBit = (nextInstruction << 6) >> 31;
             
             switch(opcode) {
+                case 0:
+                    // AND
+                    if (immBit) {
+                        registers[destination] = (uint32_t) registers[operand1] & (uint32_t)registers[operand2];
+                    } else {
+                        registers[destination] = registers[operand1] & operand2;
+                    }
+                    break;
+                case 1:
+                    // EOR
+                    if (immBit) {
+                        registers[destination] = (uint32_t) registers[operand1] ^ (uint32_t)registers[operand2];
+                    } else {
+                        registers[destination] = registers[operand1] ^ operand2;
+                    }
+                    break;
+                case 2:
+                    //SUB
+                    if (immBit) {
+                        registers[destination] = (uint32_t) registers[operand1] - (uint32_t)registers[operand2];
+                    } else {
+                        registers[destination] = registers[operand1] - operand2;
+                    }
+                    break;
+                case 3:
+                    // RSB
+                    if (immBit) {
+                        registers[destination] = (uint32_t) registers[operand2] - (uint32_t)registers[operand1];
+                    } else {
+                        registers[destination] = operand2 - registers[operand1];
+                    }
+                    break;
                 case 4:
                     // ADD
                     if (immBit) {
@@ -129,9 +162,48 @@ int main () {
 
                     if (debug) {printf("Performing ADD instruction \"%X\" on %X and %X equals %X\n", opcode, operand1, operand2, registers[destination]);}
 
-
+                    break;
+                case 5:
+                    // ADC
+                    // TODO: ADD CARRY FLAG
+                    // = O1 + O2 + C
+                    if (immBit) {
+                        registers[destination] = (uint32_t) registers[operand1] + (uint32_t)registers[operand2];
+                    } else {
+                        registers[destination] = registers[operand1] + operand2;
+                    }
+                    break;
+                case 6:
+                    // SBC
+                    // TODO: ADD CARRY FLAG
+                    // = O1 - O2 + C - 1
+                    if (immBit) {
+                        registers[destination] = (uint32_t) registers[operand1] - (uint32_t)registers[operand2];
+                    } else {
+                        registers[destination] = registers[operand1] - operand2;
+                    }
+                    break;
+                case 7:
+                    // RSC
+                    // TODO: ADD CARRY FLAG
+                    // = O2 - O1 + C - 1
+                    if (immBit) {
+                        registers[destination] = (uint32_t) registers[operand1] - (uint32_t)registers[operand2];
+                    } else {
+                        registers[destination] = registers[operand1] - operand2;
+                    }
+                    break;
+                case 8:
+                    // TST
+                    // TODO: SET FLAGS ON O1 & O2
+                    break;
+                case 9:
+                    // TEQ
+                    // TODO: SET FLAGS ON O1 ^ O2
                     break;
                 case 10:
+                    // CMP
+                    // SETS FLAG ON O1 - O2
                     if (debug) {printf("Performing CMP instruction immedate = %X, \"%X\" on %X and %X\n", immBit, opcode, operand1, operand2);}
 
                     if (registers[operand1] == operand2 && immBit) {
@@ -140,9 +212,45 @@ int main () {
                         registers[16] = 0x80000000;
                     } else {
                         registers[16] = 0x00000000;
-
                     }
                     
+                    break;
+                case 11:
+                    // CMN
+                    // TODO: SET FLAGS ON  O1 + O2
+                    break;
+                case 12:
+                    // ORR
+                    if (immBit) {
+                        registers[destination] = (uint32_t) registers[operand1] | (uint32_t)registers[operand2];
+                    } else {
+                        registers[destination] = registers[operand1] | operand2;
+                    }
+                    break;
+                case 13:
+                // MOV
+                    if (immBit) {
+                        registers[destination] = (uint32_t)registers[operand2];
+                    } else {
+                        registers[destination] = operand2;
+                    }
+                    break;
+                case 14:
+                    // BIC
+                    // O1 AND NOT O2
+                    if (immBit) {
+                        registers[destination] = (uint32_t) registers[operand1] & !(uint32_t)registers[operand2];
+                    } else {
+                        registers[destination] = registers[operand1] & !operand2;
+                    }
+                    break;
+                case 15:
+                    //MVN
+                    if (immBit) {
+                        registers[destination] = !(uint32_t)registers[operand2];
+                    } else {
+                        registers[destination] = !operand2;
+                    }
                     break;
                 default:
                     break;
@@ -269,7 +377,7 @@ int main () {
     printf("EMU STATS: Completed %d instructions in %d microseconds\n", instructionsElapsed, mtime);
     printf("EMU STATS: Clock Speed = %f MHz\n", effectiveClock);
     uart_running = 0; // Signal UART thread to exit
-    usleep(1000000); // Give UART thread time to print exit message
-    // Do not wait for UART thread, just exit
+    usleep(1000000); // Give UART thread time to print remaining buffer
+
     return 0;
 }
