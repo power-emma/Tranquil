@@ -208,9 +208,13 @@ int main () {
 
                     if (registers[operand1] == operand2 && immBit) {
                         registers[16] = 0x80000000;
+                        if (debug) {printf("Zero Flag Set\n"); }
                     } else if (registers[operand1] == registers[operand2] && !immBit) {
                         registers[16] = 0x80000000;
+                        if (debug) {printf("Zero Flag Set\n"); }
+
                     } else {
+
                         registers[16] = 0x00000000;
                     }
                     
@@ -340,6 +344,7 @@ int main () {
             if (debug) {printf("Branch of type %X to offset %X condition is %X \n", type, offset, branch);}
             if (branch) {
                 registers[15] += offset;
+                registers[15] --; // Offset the increment at end of loop
             }
 
         }
