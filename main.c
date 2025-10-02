@@ -73,7 +73,7 @@ int main () {
     pthread_create(&uart_tid, NULL, (void*)UART_thread, NULL);
   
     uint32_t* registers = (uint32_t*) malloc(17*sizeof(uint32_t));       
-    uint32_t* memory = (uint32_t*) malloc(1024*sizeof(uint32_t));
+    uint32_t* memory = (uint32_t*) malloc(65535*sizeof(uint32_t));
 
     // memory addresses 0x
     uint32_t TX_FIFO, RX_FIFO;
@@ -82,7 +82,7 @@ int main () {
 
 
     FILE *fptr;
-    fptr = fopen("../Neurotic/test/hello_world.asm.bin", "r");
+    fptr = fopen("../Neurotic/test/tranquil_hello.asm.bin", "r");
     if (fptr == NULL) {
         printf("File not found");
         return 1;
