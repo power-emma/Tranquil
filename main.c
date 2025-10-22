@@ -82,7 +82,7 @@ int main () {
 
 
     FILE *fptr;
-    fptr = fopen("../Neurotic/test/print_num.asm.bin", "r");
+    fptr = fopen("../Neurotic/test/fib_uart.asm.bin", "r");
     if (fptr == NULL) {
         printf("File not found");
         return 1;
@@ -103,7 +103,7 @@ int main () {
     gettimeofday(&start, NULL);
 
 
-    while (nextInstruction != (uint32_t) 0xD4400000 && registers[13] < 300 && (registers[13] > 100 || registers[13] < 10)) {
+    while (nextInstruction != (uint32_t) 0xD4400000 && registers[13] < 0x204) {
         uint32_t printToggle = registers[12];
 
         if (debug) {printf("Next Instruction Is %X\n", nextInstruction);}
@@ -266,12 +266,12 @@ int main () {
                 case 13:
                 // MOV
                     if (immBit) {
-                        if (debug) {printf("Performing MOV instruction \"%X\" on %X equals %X\n", opcode, operand2, (uint32_t)registers[operand2]);}
-                        registers[destination] = (uint32_t)registers[operand1];
+                        if (debug) {printf("Performing MOV IMM instruction \"%X\" on %X equals %X\n", opcode, operand2, (uint32_t)registers[operand2]);}
+                        if (debug) {printf("Moving register %d to register %d\n", operand2 % 16, destination);}
+                        registers[destination] = registers[(operand2 % 16)];
                     } else {
-                        if (debug) {printf("Performing MOV instruction \"%X\" on %X equals %X\n", opcode, operand1, (uint32_t)registers[operand1]);}
-
-                        registers[destination] = (uint32_t)registers[operand1];
+                        if (debug) {printf("Moving value %d to register %d\n", operand2, destination);}
+                        registers[destination] = operand2;
                     }
                     break;
                 case 14:
@@ -366,7 +366,7 @@ int main () {
                     if (debug) {printf("Loading value %X into register %d from memory address %d\n", memory[registers[offset]], destination, registers[offset]);}
 
                     offset = memory[registers[offset]];
-                    if (debug) {printf("Offset from memory address %X is %X\n", memory[registers[offset]], registers[offset]);}
+                    //if (debug) {printf("Offset from memory address %X is %X\n", memory[registers[offset]], registers[offset]);}
                 } else {
                     offset = memory[registers[15] + offset];
                 }
@@ -495,7 +495,7 @@ int main () {
     mtime = (seconds * 1000000) + useconds; // Total elapsed time in microseconds
 
     float effectiveClock = (float) instructionsElapsed/(mtime);
-    printf("\n-------CPU HALTED--------\n");
+    printf("-------CPU HALTED--------\n");
     printf("EMU STATS: Completed %d instructions in %d microseconds\n", instructionsElapsed, mtime);
     printf("EMU STATS: Clock Speed = %f MHz\n", effectiveClock);
     uart_running = 0; // Signal UART thread to exit
