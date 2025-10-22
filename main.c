@@ -82,7 +82,7 @@ int main () {
 
 
     FILE *fptr;
-    fptr = fopen("../Neurotic/test/tranquil_hello.asm.bin", "r");
+    fptr = fopen("../Neurotic/test/print_num.asm.bin", "r");
     if (fptr == NULL) {
         printf("File not found");
         return 1;
@@ -103,7 +103,7 @@ int main () {
     gettimeofday(&start, NULL);
 
 
-    while (nextInstruction != (uint32_t) 0xD4400000) {
+    while (nextInstruction != (uint32_t) 0xD4400000 && registers[13] < 300 && (registers[13] > 100 || registers[13] < 10)) {
         uint32_t printToggle = registers[12];
 
         if (debug) {printf("Next Instruction Is %X\n", nextInstruction);}
@@ -143,6 +143,7 @@ int main () {
                     } else {
                         registers[destination] = registers[operand1] - operand2;
                     }
+
                     break;
                 case 3:
                     // RSB
@@ -205,17 +206,48 @@ int main () {
                     // CMP
                     // SETS FLAG ON O1 - O2
                     if (debug) {printf("Performing CMP instruction immedate = %X, \"%X\" on %X and %X\n", immBit, opcode, operand1, operand2);}
-
-                    if (registers[operand1] == operand2 && immBit) {
-                        registers[16] = 0x80000000;
-                        if (debug) {printf("Zero Flag Set\n"); }
-                    } else if (registers[operand1] == registers[operand2] && !immBit) {
-                        registers[16] = 0x80000000;
-                        if (debug) {printf("Zero Flag Set\n"); }
-
+                    if (debug) {printf("R%d = %X\n", operand1, registers[operand1]);}
+                    if (debug) {printf("R%d = %X\n", operand2, registers[operand2]);}
+                    // N (Negative) Flag
+                    if (((registers[operand1] - operand2) >> 31) == 1 && immBit) {
+                        registers[16] |= 0x80000000;
+                        if (debug) {printf("Negative Flag Set\n"); }
+                    } else if (((registers[operand1] - registers[operand2]) >> 31) == 1 && !immBit) {
+                        registers[16] |= 0x80000000;
+                        if (debug) {printf("Negative Flag Set\n"); }
                     } else {
+                        registers[16] &= 0x4FFFFFFF; // Clear Zero Flag
+                    }
+                    // Z (Zero) Flag
+                    if (registers[operand1] == operand2 && immBit) {
+                        registers[16] |= 0x40000000;
+                        if (debug) {printf("Zero Flag Set Main\n"); }
+                    } else if (registers[operand1] == registers[operand2] && !immBit) {
+                        registers[16] |= 0x40000000;
+                        if (debug) {printf("Zero Flag Set Reg\n"); }
+                    } else {
+                        registers[16] &= 0xBFFFFFFF; // Clear Zero Flag
+                    }
+                    // C (Carry) Flag
+                    if (registers[operand1] >= operand2 && immBit) {
+                        registers[16] |= 0x20000000; // Set Overflow Flag
+                        if (debug) {printf("Carry Flag Set\n"); }
+                    } else if (registers[operand1] >= registers[operand2] && !immBit) {
+                        registers[16] |= 0x20000000; // Set Overflow Flag
+                        if (debug) {printf("Carry Flag Set\n"); }
+                    } else {
+                        registers[16] &= 0xDFFFFFFF; // Clear Overflow Flag
+                    }
 
-                        registers[16] = 0x00000000;
+                    // V (Overflow) Flag
+                    if (registers[destination] > 0 && registers[operand1] < 0 && registers[operand2] < 0) {
+                        registers[16] |= 0x10000000; // Set Overflow Flag
+                        if (debug) {printf("Overflow Flag Set\n"); }
+                    } else if (registers[destination] < 0 && registers[operand1] > 0 && registers[operand2] > 0) {
+                        registers[16] |= 0x10000000; // Set Overflow Flag
+                        if (debug) {printf("Overflow Flag Set\n"); }
+                    } else {
+                        registers[16] &= 0xEFFFFFFF; // Clear Overflow Flag
                     }
                     
                     break;
@@ -234,9 +266,12 @@ int main () {
                 case 13:
                 // MOV
                     if (immBit) {
-                        registers[destination] = (uint32_t)registers[operand2];
+                        if (debug) {printf("Performing MOV instruction \"%X\" on %X equals %X\n", opcode, operand2, (uint32_t)registers[operand2]);}
+                        registers[destination] = (uint32_t)registers[operand1];
                     } else {
-                        registers[destination] = operand2;
+                        if (debug) {printf("Performing MOV instruction \"%X\" on %X equals %X\n", opcode, operand1, (uint32_t)registers[operand1]);}
+
+                        registers[destination] = (uint32_t)registers[operand1];
                     }
                     break;
                 case 14:
@@ -260,15 +295,78 @@ int main () {
                     break;
             }
 
+            //Shifts
+            uint32_t shiftType = byteIsolate(nextInstruction, 0, 2, 5);
+            uint32_t shiftFromReg = byteIsolate(nextInstruction, 0, 1, 4);
+            if (byteIsolate(nextInstruction, 0,5, 7) == 0 || !immBit) {
+                if (debug) {printf("No Shift Applied\n");}
+                // No shift
+            }
+            else if (shiftFromReg == 0) {
+                
+                uint32_t shiftAmount = byteIsolate(nextInstruction, 0,5, 7);
+                if (debug) {printf("Shift Opcode = %X\n", byteIsolate(nextInstruction, 0,8,4));}
+                if (debug) {printf("Destination Register is currently %X\n", registers[destination]);}
+                if (debug) {printf("Shifting register %d by %d of type %d\n", destination, shiftAmount, shiftType);}
+                switch(shiftType) {
+                    case 0:
+                        // LSL
+                        registers[destination] = registers[destination] << shiftAmount;
+                        break;
+                    case 1:
+                        // LSR
+                        registers[destination] = registers[destination] >> shiftAmount;
+                        break;
+                    case 2:
+                        // ASR
+                        registers[destination] = (int32_t)registers[destination] >> shiftAmount;
+                        break;
+                    case 3:
+                        // ROR
+                        registers[destination] = (registers[destination] >> shiftAmount) | (registers[destination] << (32 - shiftAmount));
+                        break;
+                    default:
+                        break;
+                }
+            } else {
+                uint8_t shiftReg = byteIsolate(nextInstruction, 8, 4, 0);
+                switch(shiftType) {
+                    case 0:
+                        // LSL
+                        registers[destination] = registers[destination] << (registers[shiftReg] & 0xFF);
+                        break;
+                    case 1:
+                        // LSR
+                        registers[destination] = registers[destination] >> (registers[shiftReg] & 0xFF);
+                        break;
+                    case 2:
+                        // ASR
+                        registers[destination] = (int32_t)registers[destination] >> (registers[shiftReg] & 0xFF);
+                        break;
+                    case 3:
+                        // ROR
+                        registers[destination] = (registers[destination] >> (registers[shiftReg] & 0xFF)) | (registers[destination] << (32 - (registers[shiftReg] & 0xFF)));
+                        break;
+                    default:
+                        break;
+                }
+            }
+
+
         } else if (nextInstruction == (nextInstruction & 0xF7FFFFFF)) {
             //printf("^ Single Data Transfer \n");
             char loadBit = byteIsolate(nextInstruction, 0, 1, 20);
-            uint8_t immBit = byteIsolate(nextInstruction, 25, 1, 0);
+            uint8_t immBit = byteIsolate(nextInstruction, 0, 1, 25);
             uint32_t offset = byteIsolate(nextInstruction, 0, 12, 0);
             uint8_t destination = byteIsolate(nextInstruction, 3, 4, 0);
+            if (debug) {printf("Load/Store Instruction LoadBit: %X, ImmBit: %X, Offset: %X, Destination: %d\n", loadBit, immBit, offset, destination);}
+
             if (loadBit) {
-                if (immBit) {
+                if (!immBit) {
+                    if (debug) {printf("Loading value %X into register %d from memory address %d\n", memory[registers[offset]], destination, registers[offset]);}
+
                     offset = memory[registers[offset]];
+                    if (debug) {printf("Offset from memory address %X is %X\n", memory[registers[offset]], registers[offset]);}
                 } else {
                     offset = memory[registers[15] + offset];
                 }
@@ -315,9 +413,9 @@ int main () {
                     }
                 } else {
                     // Store
-                    memory[registers[offset] + registers[15]] = registers[destination];
+                    memory[registers[offset]] = registers[destination];
 
-                    printf("Storing %X into memory address %X\n", registers[destination], registers[offset] + registers[15]);
+                    if (debug) {printf("Storing %X into memory address at r %d, is %d with value %X\n", registers[destination], offset, registers[offset], memory[registers[offset]]);};
                 }
             }
         
@@ -331,8 +429,21 @@ int main () {
             char branch = 0;
 
             switch(type) {
+                // BEQ
                 case 0x0:
-                    branch = byteIsolate(registers[16], 31, 1, 0);
+                    branch = byteIsolate(registers[16], 30, 1, 0);
+                    break;
+                //BNE
+                case 0x1:
+                    branch = !byteIsolate(registers[16], 30, 1, 0);
+                    break;
+                // BHS
+                case 0x2:
+                    branch = byteIsolate(registers[16], 29, 1, 0);
+                    break;
+                // BHS
+                case 0x3:
+                    branch = !byteIsolate(registers[16], 29, 1, 0);
                     break;
                 case 0xE:
                     // Unconditional
@@ -341,15 +452,21 @@ int main () {
                 default:
                     break;
             }
-            if (debug) {printf("Branch of type %X to offset %X condition is %X \n", type, offset, branch);}
+            if (debug) {printf("Branch of type %d from %d to offset %d condition is %X \n", type, registers[15], offset, branch);}
             if (branch) {
-                registers[15] += offset;
-                registers[15] --; // Offset the increment at end of loop
+                if (offset >= 0) {
+                    registers[15] += offset;
+                    registers[15] --; // Offset the increment at end of loop
+                } else {
+                    registers[15] += offset;
+                    registers[15] --;
+                }
+                if (debug) {printf("Branch Taken to address %X\n", registers[15]);}
             }
 
         }
 
-        if (debug) {printf("Register Output: R0 = %X, R1 = %X, R2 = %X, R3 = %X, R12 = %X, PSX = %X, PC = %X\n", registers[0], registers[1], registers[2], registers[3], registers[12], registers[16], registers[15]);}
+        if (debug) {printf("Register Output: R0 = %X, R1 = %X, R2 = %X, R3 = %X, R12 = %X, PSX = %X, PC = %X, SP = %d\n", registers[0], registers[1], registers[2], registers[3], registers[12], registers[16], registers[15], registers[13]);}
         
         registers[15] ++; // Increment PC
         nextInstruction = memory[registers[15]]; // Get Next Instruction
@@ -378,7 +495,7 @@ int main () {
     mtime = (seconds * 1000000) + useconds; // Total elapsed time in microseconds
 
     float effectiveClock = (float) instructionsElapsed/(mtime);
-    printf("-------CPU HALTED--------\n");
+    printf("\n-------CPU HALTED--------\n");
     printf("EMU STATS: Completed %d instructions in %d microseconds\n", instructionsElapsed, mtime);
     printf("EMU STATS: Clock Speed = %f MHz\n", effectiveClock);
     uart_running = 0; // Signal UART thread to exit
